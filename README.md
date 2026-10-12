@@ -1,14 +1,17 @@
 # pomodoro-cli
 
 A simple Pomodoro timer for the command line. It counts down work and rest
-periods in your terminal and sends a desktop notification at each transition.
+periods in your terminal and in the macOS menu bar, and sends a desktop
+notification at each transition.
 
 ## Requirements
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 
-There are no runtime dependencies.
+On macOS, [PyObjC](https://pyobjc.readthedocs.io/) is installed
+automatically for the menu bar countdown. There are no dependencies on other
+systems.
 
 ## Installation
 
@@ -74,9 +77,23 @@ pomodoro -w 0.5 -r 0.25      # fractional minutes work too (30s / 15s)
 | `-w`, `--working-time` | Work period in minutes | `25` |
 | `-r`, `--rest-time` | Rest period in minutes | `5` |
 | `-c`, `--cycles` | Number of work/rest cycles | `1` |
+| `--no-menubar` | Don't show the countdown in the macOS menu bar | off |
 
 Times must be greater than 0; cycles must be a whole number greater than 0.
 Press `Ctrl+C` to stop the timer.
+
+## Menu bar countdown (macOS)
+
+While the timer runs, the time left is shown in the menu bar, and it stays
+visible whatever app you're in:
+
+```
+🍅 Work 24:13
+```
+
+Click it to see the current cycle (e.g. `Cycle 1/4 - Work`) or to **Stop**
+the timer. The item disappears when the timer finishes or is stopped. Use
+`--no-menubar` to turn it off.
 
 ## Notifications
 
@@ -106,15 +123,16 @@ uv sync            # create .venv and install dev dependencies
 uv run pytest      # run the test suite
 ```
 
-The tests use a fake clock and a fake notifier, so they run instantly and
-don't send real notifications.
+The tests use a fake clock, notifier and menu bar, so they run instantly
+and don't send real notifications or draw in the menu bar.
 
 ## Project layout
 
 ```
 src/pomodoro/cli.py       timer, notifications and argument parsing
+src/pomodoro/menubar.py   macOS menu bar countdown
 src/pomodoro/__main__.py  enables `python -m pomodoro`
-tests/test_cli.py         pytest suite
+tests/                    pytest suite
 pyproject.toml            project metadata and the `pomodoro` entry point
 ```
 

@@ -43,12 +43,17 @@ def format_time(seconds):
     return f"{minutes:02d}:{secs:02d}"
 
 
-def countdown(minutes, label, sleep=time.sleep, out=sys.stdout):
-    """Count down the given number of minutes, one second at a time."""
+def countdown(minutes, label, sleep=time.sleep, out=sys.stdout, on_tick=None):
+    """Count down the given number of minutes, one second at a time.
+
+    If given, on_tick(remaining_seconds) is called once per second.
+    """
     remaining = int(round(minutes * 60))
     while remaining > 0:
         out.write(f"\r{label}: {format_time(remaining)} ")
         out.flush()
+        if on_tick:
+            on_tick(remaining)
         sleep(1)
         remaining -= 1
     out.write(f"\r{label}: {format_time(0)} \n")
@@ -57,17 +62,28 @@ def countdown(minutes, label, sleep=time.sleep, out=sys.stdout):
 
 def run(working_time=DEFAULT_WORKING_TIME, rest_time=DEFAULT_REST_TIME,
         cycles=DEFAULT_CYCLES, notifier=notify, sleep=time.sleep,
-        out=sys.stdout):
-    """Run the given number of work/rest cycles, notifying at each transition."""
+        out=sys.stdout, on_tick=None):
+    """Run the given number of work/rest cycles, notifying at each transition.
+
+    If given, on_tick(phase, cycle, cycles, remaining_seconds) is called once
+    per second, where phase is "Work" or "Rest".
+    """
+    def ticker(phase, cycle):
+        if on_tick:
+            return lambda remaining: on_tick(phase, cycle, cycles, remaining)
+        return None
+
     for cycle in range(1, cycles + 1):
         prefix = f"Cycle {cycle}/{cycles}"
 
-        countdown(working_time, f"{prefix} - Work", sleep=sleep, out=out)
+        countdown(working_time, f"{prefix} - Work", sleep=sleep, out=out,
+                  on_tick=ticker("Work", cycle))
         notifier("Work period ended",
                  f"{prefix}: time for a {format_minutes(rest_time)} break.",
                  sound="Glass")
 
-        countdown(rest_time, f"{prefix} - Rest", sleep=sleep, out=out)
+        countdown(rest_time, f"{prefix} - Rest", sleep=sleep, out=out,
+                  on_tick=ticker("Rest", cycle))
         if cycle < cycles:
             notifier("Rest period ended",
                      f"{prefix}: back to work!",
@@ -114,13 +130,34 @@ def parse_args(argv=None):
     parser.add_argument("-c", "--cycles", type=positive_int,
                         default=DEFAULT_CYCLES,
                         help="number of work/rest cycles (default: %(default)s)")
+    parser.add_argument("--no-menubar", dest="menubar", action="store_false",
+                        help="don't show the countdown in the macOS menu bar")
     return parser.parse_args(argv)
+
+
+def load_menubar():
+    """Return the menu bar module, or None if it isn't available here."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        from pomodoro import menubar
+    except ImportError:
+        print("Menu bar countdown unavailable (PyObjC is not installed).",
+              file=sys.stderr)
+        return None
+    return menubar
 
 
 def main(argv=None):
     args = parse_args(argv)
+    menubar = load_menubar() if args.menubar else None
     try:
-        run(args.working_time, args.rest_time, args.cycles)
+        if menubar:
+            menubar.run_with_menubar(
+                lambda **kwargs: run(args.working_time, args.rest_time,
+                                     args.cycles, **kwargs))
+        else:
+            run(args.working_time, args.rest_time, args.cycles)
     except KeyboardInterrupt:
         print("\nPomodoro stopped.")
         return 130

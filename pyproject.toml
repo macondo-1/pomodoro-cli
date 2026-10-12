@@ -6,7 +6,9 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pyobjc-framework-cocoa>=12.2.2 ; sys_platform == 'darwin'",
+]
 
 [project.scripts]
 pomodoro = "pomodoro.cli:main"

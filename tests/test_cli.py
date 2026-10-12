@@ -156,6 +156,16 @@ def test_format_time(seconds, expected):
     assert cli.format_time(seconds) == expected
 
 
+def test_on_tick_reports_phase_cycle_and_remaining(notifier, clock):
+    ticks = []
+    run(notifier, clock, working_time=2 / 60, rest_time=1 / 60, cycles=2,
+        on_tick=lambda *args: ticks.append(args))
+    assert ticks == [
+        ("Work", 1, 2, 2), ("Work", 1, 2, 1), ("Rest", 1, 2, 1),
+        ("Work", 2, 2, 2), ("Work", 2, 2, 1), ("Rest", 2, 2, 1),
+    ]
+
+
 # --- notifications ----------------------------------------------------------
 
 def test_notify_macos_uses_osascript(monkeypatch):
@@ -200,7 +210,13 @@ def test_notify_falls_back_when_command_fails(monkeypatch, capsys):
 
 # --- main -------------------------------------------------------------------
 
-def test_main_passes_arguments_to_run(monkeypatch):
+@pytest.fixture
+def no_menubar(monkeypatch):
+    """Keep main() from drawing a real menu bar item during tests."""
+    monkeypatch.setattr(cli, "load_menubar", lambda: None)
+
+
+def test_main_passes_arguments_to_run(monkeypatch, no_menubar):
     received = {}
     monkeypatch.setattr(cli, "run",
                         lambda w, r, c: received.update(w=w, r=r, c=c))
@@ -208,10 +224,44 @@ def test_main_passes_arguments_to_run(monkeypatch):
     assert received == {"w": 50, "r": 10, "c": 3}
 
 
-def test_main_handles_ctrl_c(monkeypatch, capsys):
+def test_main_handles_ctrl_c(monkeypatch, capsys, no_menubar):
     def interrupted(*args):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cli, "run", interrupted)
     assert cli.main([]) == 130
     assert "stopped" in capsys.readouterr().out
+
+
+def test_main_uses_menubar_when_available(monkeypatch):
+    calls = []
+
+    class FakeMenubarModule:
+        @staticmethod
+        def run_with_menubar(timer):
+            timer(on_tick="tick", sleep="sleep")
+
+    monkeypatch.setattr(cli, "load_menubar", lambda: FakeMenubarModule)
+    monkeypatch.setattr(cli, "run", lambda *args, **kwargs:
+                        calls.append((args, kwargs)))
+    assert cli.main(["-w", "50", "-r", "10", "-c", "3"]) == 0
+    assert calls == [((50, 10, 3), {"on_tick": "tick", "sleep": "sleep"})]
+
+
+def test_main_no_menubar_flag_skips_menubar(monkeypatch):
+    def fail():
+        raise AssertionError("menu bar should not be loaded")
+
+    monkeypatch.setattr(cli, "load_menubar", fail)
+    monkeypatch.setattr(cli, "run", lambda *args: None)
+    assert cli.main(["--no-menubar"]) == 0
+
+
+def test_menubar_enabled_by_default():
+    assert cli.parse_args([]).menubar is True
+    assert cli.parse_args(["--no-menubar"]).menubar is False
+
+
+def test_load_menubar_skipped_off_macos(monkeypatch):
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+    assert cli.load_menubar() is None
