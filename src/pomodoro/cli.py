@@ -1,11 +1,13 @@
 """A simple Pomodoro timer for the command line."""
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
 import sys
 import time
+from xml.sax.saxutils import escape
 
 DEFAULT_WORKING_TIME = 25
 DEFAULT_REST_TIME = 5
@@ -15,6 +17,38 @@ DEFAULT_CYCLES = 1
 def _applescript_string(text):
     """Quote text as an AppleScript string literal."""
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+# Windows PowerShell 5.1 (always installed) can load the WinRT toast API;
+# PowerShell 7 can't. Toasts need an app ID, so they appear as coming from
+# Windows PowerShell.
+WINDOWS_TOAST_SCRIPT = """
+$ErrorActionPreference = 'Stop'
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($env:POMODORO_TOAST_XML)
+$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show(
+    [Windows.UI.Notifications.ToastNotification]::new($xml))
+"""
+
+# Windows has no named sounds like macOS, so map each one to a toast sound.
+WINDOWS_SOUNDS = {
+    "Glass": "ms-winsoundevent:Notification.Default",
+    "Ping": "ms-winsoundevent:Notification.IM",
+    "Hero": "ms-winsoundevent:Notification.Reminder",
+}
+
+
+def _windows_toast_xml(title, message, sound):
+    """Build the XML for a Windows toast notification."""
+    audio = WINDOWS_SOUNDS.get(sound, WINDOWS_SOUNDS["Glass"])
+    return (
+        "<toast><visual><binding template=\"ToastGeneric\">"
+        f"<text>{escape(title)}</text><text>{escape(message)}</text>"
+        f"</binding></visual><audio src=\"{audio}\"/></toast>"
+    )
 
 
 def notify(title, message, sound="Glass"):
@@ -28,6 +62,15 @@ def notify(title, message, sound="Glass"):
                 f"sound name {_applescript_string(sound)}"
             )
             subprocess.run(["osascript", "-e", script], check=True)
+            return
+        if system == "Windows":
+            # The XML goes in an environment variable to avoid quoting it.
+            env = {**os.environ,
+                   "POMODORO_TOAST_XML": _windows_toast_xml(title, message,
+                                                            sound)}
+            subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive",
+                            "-Command", WINDOWS_TOAST_SCRIPT],
+                           check=True, env=env, capture_output=True)
             return
         if system == "Linux" and shutil.which("notify-send"):
             subprocess.run(["notify-send", title, message], check=True)

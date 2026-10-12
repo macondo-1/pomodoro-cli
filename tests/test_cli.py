@@ -2,6 +2,7 @@ import io
 import subprocess
 import sys
 import types
+from xml.etree import ElementTree
 
 import pytest
 
@@ -194,8 +195,43 @@ def test_notify_linux_uses_notify_send(monkeypatch):
     assert calls == [["notify-send", "Title", "Message"]]
 
 
-def test_notify_falls_back_to_terminal(monkeypatch, capsys):
+def test_notify_windows_shows_toast(monkeypatch):
+    calls = []
     monkeypatch.setattr(cli.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(cli.subprocess, "run",
+                        lambda cmd, **kwargs: calls.append((cmd, kwargs)))
+    cli.notify("Title & co", "Back <now>", sound="Hero")
+    assert len(calls) == 1
+    cmd, kwargs = calls[0]
+    assert cmd[0] == "powershell.exe"
+    assert cmd[-1] == cli.WINDOWS_TOAST_SCRIPT
+    assert kwargs["check"] is True
+
+    toast = ElementTree.fromstring(kwargs["env"]["POMODORO_TOAST_XML"])
+    assert [t.text for t in toast.iter("text")] == ["Title & co", "Back <now>"]
+    assert (toast.find("audio").get("src")
+            == "ms-winsoundevent:Notification.Reminder")
+
+
+def test_windows_toast_unknown_sound_uses_default():
+    toast = ElementTree.fromstring(
+        cli._windows_toast_xml("Title", "Message", sound="Nope"))
+    assert (toast.find("audio").get("src")
+            == "ms-winsoundevent:Notification.Default")
+
+
+def test_notify_windows_falls_back_when_powershell_fails(monkeypatch, capsys):
+    def failing_run(cmd, **kwargs):
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(cli.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(cli.subprocess, "run", failing_run)
+    cli.notify("Title", "Message")
+    assert "[Title] Message" in capsys.readouterr().out
+
+
+def test_notify_falls_back_to_terminal(monkeypatch, capsys):
+    monkeypatch.setattr(cli.platform, "system", lambda: "FreeBSD")
     cli.notify("Title", "Message")
     assert "[Title] Message" in capsys.readouterr().out
 

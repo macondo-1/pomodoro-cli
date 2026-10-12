@@ -128,6 +128,11 @@ How notifications are delivered:
 
 - **macOS**: via `osascript`. If none appear, allow notifications for
   **Script Editor** in System Settings → Notifications.
+- **Windows**: as a toast notification via the built-in Windows PowerShell,
+  so they're listed as coming from **Windows PowerShell**. If none appear,
+  check that notifications are on in Settings → System → Notifications and
+  that Do Not Disturb / Focus is off. The sounds are Windows' own: Default,
+  Instant Message and Reminder.
 - **Linux**: via `notify-send` (from `libnotify`).
 - **Elsewhere**, or if the above fails: a message is printed in the terminal
   with a bell.
