@@ -12,14 +12,29 @@ There are no runtime dependencies.
 
 ## Installation
 
-Install `pomodoro` as a command you can run from any folder:
+Install `pomodoro` as a command you can run from any folder.
+
+### From GitHub
+
+No need to clone the repo:
 
 ```sh
-uv tool install --editable .
+uv tool install git+https://github.com/macondo-1/pomodoro-cli
 ```
 
-uv places the command in `~/.local/bin`. If your shell can't find it, run
-`uv tool update-shell` and open a new terminal.
+To update to the latest version later:
+
+```sh
+uv tool upgrade pomodoro-cli
+```
+
+### From a local clone (for development)
+
+```sh
+git clone https://github.com/macondo-1/pomodoro-cli.git
+cd pomodoro-cli
+uv tool install --editable .
+```
 
 Because the install is editable, code changes take effect immediately. After
 changing `pyproject.toml` (e.g. adding a dependency), reinstall:
@@ -28,16 +43,21 @@ changing `pyproject.toml` (e.g. adding a dependency), reinstall:
 uv tool install --editable . --reinstall
 ```
 
-To uninstall:
-
-```sh
-uv tool uninstall pomodoro-cli
-```
-
 You can also run it from the project folder without installing it:
 
 ```sh
 uv run pomodoro
+```
+
+### Finding and removing the command
+
+uv places the command in `~/.local/bin`. If your shell can't find it, run
+`uv tool update-shell` and open a new terminal.
+
+To uninstall:
+
+```sh
+uv tool uninstall pomodoro-cli
 ```
 
 ## Usage
