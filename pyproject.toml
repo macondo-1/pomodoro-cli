@@ -1,0 +1,24 @@
+[project]
+name = "pomodoro-cli"
+version = "0.1.0"
+description = "A simple Pomodoro timer for the command line with desktop notifications"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+pomodoro = "pomodoro.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "pomodoro"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
