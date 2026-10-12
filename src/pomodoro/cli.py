@@ -130,30 +130,35 @@ def parse_args(argv=None):
     parser.add_argument("-c", "--cycles", type=positive_int,
                         default=DEFAULT_CYCLES,
                         help="number of work/rest cycles (default: %(default)s)")
-    parser.add_argument("--no-menubar", dest="menubar", action="store_false",
-                        help="don't show the countdown in the macOS menu bar")
+    parser.add_argument("--no-menubar", "--no-tray", dest="indicator",
+                        action="store_false",
+                        help="don't show the countdown in the macOS menu bar "
+                             "or Windows system tray")
     return parser.parse_args(argv)
 
 
-def load_menubar():
-    """Return the menu bar module, or None if it isn't available here."""
-    if sys.platform != "darwin":
-        return None
+def load_indicator():
+    """Return a run_with_*(timer) function for this platform's menu bar or
+    system tray, or None if there isn't one here."""
     try:
-        from pomodoro import menubar
-    except ImportError:
-        print("Menu bar countdown unavailable (PyObjC is not installed).",
+        if sys.platform == "darwin":
+            from pomodoro.menubar import run_with_menubar
+            return run_with_menubar
+        if sys.platform == "win32":
+            from pomodoro.tray import run_with_tray
+            return run_with_tray
+    except ImportError as exc:
+        print(f"Countdown indicator unavailable ({exc.name} is not installed).",
               file=sys.stderr)
-        return None
-    return menubar
+    return None
 
 
 def main(argv=None):
     args = parse_args(argv)
-    menubar = load_menubar() if args.menubar else None
+    show_indicator = load_indicator() if args.indicator else None
     try:
-        if menubar:
-            menubar.run_with_menubar(
+        if show_indicator:
+            show_indicator(
                 lambda **kwargs: run(args.working_time, args.rest_time,
                                      args.cycles, **kwargs))
         else:

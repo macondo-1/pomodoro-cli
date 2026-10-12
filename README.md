@@ -1,8 +1,8 @@
 # pomodoro-cli
 
 A simple Pomodoro timer for the command line. It counts down work and rest
-periods in your terminal and in the macOS menu bar, and sends a desktop
-notification at each transition.
+periods in your terminal, in the macOS menu bar or Windows system tray, and
+sends a desktop notification at each transition.
 
 ## Requirements
 
@@ -10,8 +10,10 @@ notification at each transition.
 - [uv](https://docs.astral.sh/uv/)
 
 On macOS, [PyObjC](https://pyobjc.readthedocs.io/) is installed
-automatically for the menu bar countdown. There are no dependencies on other
-systems.
+automatically for the menu bar countdown. On Windows,
+[pystray](https://github.com/moses-palmer/pystray) and
+[Pillow](https://python-pillow.org/) are installed for the tray icon. There
+are no dependencies on other systems.
 
 ## Installation
 
@@ -77,7 +79,7 @@ pomodoro -w 0.5 -r 0.25      # fractional minutes work too (30s / 15s)
 | `-w`, `--working-time` | Work period in minutes | `25` |
 | `-r`, `--rest-time` | Rest period in minutes | `5` |
 | `-c`, `--cycles` | Number of work/rest cycles | `1` |
-| `--no-menubar` | Don't show the countdown in the macOS menu bar | off |
+| `--no-menubar`, `--no-tray` | Don't show the countdown in the macOS menu bar or Windows tray | off |
 
 Times must be greater than 0; cycles must be a whole number greater than 0.
 Press `Ctrl+C` to stop the timer.
@@ -94,6 +96,20 @@ visible whatever app you're in:
 Click it to see the current cycle (e.g. `Cycle 1/4 - Work`) or to **Stop**
 the timer. The item disappears when the timer finishes or is stopped. Use
 `--no-menubar` to turn it off.
+
+## Tray countdown (Windows)
+
+While the timer runs, a tomato icon sits in the system tray. Windows tray
+icons can't show text, so hover over it to see the time left and the
+current cycle:
+
+```
+🍅 Work 24:13
+Cycle 1/4 - Work
+```
+
+Right-click it to **Stop** the timer. The icon disappears when the timer
+finishes or is stopped. Use `--no-tray` to turn it off.
 
 ## Notifications
 
@@ -123,14 +139,17 @@ uv sync            # create .venv and install dev dependencies
 uv run pytest      # run the test suite
 ```
 
-The tests use a fake clock, notifier and menu bar, so they run instantly
-and don't send real notifications or draw in the menu bar.
+The tests use a fake clock, notifier, menu bar and tray icon, so they run
+instantly on any platform and don't send real notifications or draw
+anything on screen.
 
 ## Project layout
 
 ```
 src/pomodoro/cli.py       timer, notifications and argument parsing
+src/pomodoro/indicator.py runs the timer alongside the menu bar or tray icon
 src/pomodoro/menubar.py   macOS menu bar countdown
+src/pomodoro/tray.py      Windows system tray countdown
 src/pomodoro/__main__.py  enables `python -m pomodoro`
 tests/                    pytest suite
 pyproject.toml            project metadata and the `pomodoro` entry point

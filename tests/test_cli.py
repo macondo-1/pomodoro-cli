@@ -1,5 +1,7 @@
 import io
 import subprocess
+import sys
+import types
 
 import pytest
 
@@ -211,12 +213,12 @@ def test_notify_falls_back_when_command_fails(monkeypatch, capsys):
 # --- main -------------------------------------------------------------------
 
 @pytest.fixture
-def no_menubar(monkeypatch):
-    """Keep main() from drawing a real menu bar item during tests."""
-    monkeypatch.setattr(cli, "load_menubar", lambda: None)
+def no_indicator(monkeypatch):
+    """Keep main() from drawing a real menu bar or tray icon during tests."""
+    monkeypatch.setattr(cli, "load_indicator", lambda: None)
 
 
-def test_main_passes_arguments_to_run(monkeypatch, no_menubar):
+def test_main_passes_arguments_to_run(monkeypatch, no_indicator):
     received = {}
     monkeypatch.setattr(cli, "run",
                         lambda w, r, c: received.update(w=w, r=r, c=c))
@@ -224,7 +226,7 @@ def test_main_passes_arguments_to_run(monkeypatch, no_menubar):
     assert received == {"w": 50, "r": 10, "c": 3}
 
 
-def test_main_handles_ctrl_c(monkeypatch, capsys, no_menubar):
+def test_main_handles_ctrl_c(monkeypatch, capsys, no_indicator):
     def interrupted(*args):
         raise KeyboardInterrupt
 
@@ -233,35 +235,51 @@ def test_main_handles_ctrl_c(monkeypatch, capsys, no_menubar):
     assert "stopped" in capsys.readouterr().out
 
 
-def test_main_uses_menubar_when_available(monkeypatch):
+def test_main_uses_indicator_when_available(monkeypatch):
     calls = []
 
-    class FakeMenubarModule:
-        @staticmethod
-        def run_with_menubar(timer):
-            timer(on_tick="tick", sleep="sleep")
+    def show_indicator(timer):
+        timer(on_tick="tick", sleep="sleep")
 
-    monkeypatch.setattr(cli, "load_menubar", lambda: FakeMenubarModule)
+    monkeypatch.setattr(cli, "load_indicator", lambda: show_indicator)
     monkeypatch.setattr(cli, "run", lambda *args, **kwargs:
                         calls.append((args, kwargs)))
     assert cli.main(["-w", "50", "-r", "10", "-c", "3"]) == 0
     assert calls == [((50, 10, 3), {"on_tick": "tick", "sleep": "sleep"})]
 
 
-def test_main_no_menubar_flag_skips_menubar(monkeypatch):
+@pytest.mark.parametrize("flag", ["--no-menubar", "--no-tray"])
+def test_main_no_indicator_flag_skips_indicator(monkeypatch, flag):
     def fail():
-        raise AssertionError("menu bar should not be loaded")
+        raise AssertionError("indicator should not be loaded")
 
-    monkeypatch.setattr(cli, "load_menubar", fail)
+    monkeypatch.setattr(cli, "load_indicator", fail)
     monkeypatch.setattr(cli, "run", lambda *args: None)
-    assert cli.main(["--no-menubar"]) == 0
+    assert cli.main([flag]) == 0
 
 
-def test_menubar_enabled_by_default():
-    assert cli.parse_args([]).menubar is True
-    assert cli.parse_args(["--no-menubar"]).menubar is False
+def test_indicator_enabled_by_default():
+    assert cli.parse_args([]).indicator is True
+    assert cli.parse_args(["--no-menubar"]).indicator is False
+    assert cli.parse_args(["--no-tray"]).indicator is False
 
 
-def test_load_menubar_skipped_off_macos(monkeypatch):
+def test_load_indicator_skipped_on_linux(monkeypatch):
     monkeypatch.setattr(cli.sys, "platform", "linux")
-    assert cli.load_menubar() is None
+    assert cli.load_indicator() is None
+
+
+def test_load_indicator_uses_tray_on_windows(monkeypatch):
+    tray = types.ModuleType("pomodoro.tray")
+    tray.run_with_tray = object()
+    monkeypatch.setitem(sys.modules, "pomodoro.tray", tray)
+    monkeypatch.setattr(cli.sys, "platform", "win32")
+    assert cli.load_indicator() is tray.run_with_tray
+
+
+def test_load_indicator_reports_missing_dependency(monkeypatch, capsys):
+    monkeypatch.setitem(sys.modules, "pystray", None)  # import fails
+    monkeypatch.delitem(sys.modules, "pomodoro.tray", raising=False)
+    monkeypatch.setattr(cli.sys, "platform", "win32")
+    assert cli.load_indicator() is None
+    assert "pystray is not installed" in capsys.readouterr().err
