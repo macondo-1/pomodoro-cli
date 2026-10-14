@@ -68,10 +68,35 @@ def test_custom_values_short_flags():
     assert (args.working_time, args.rest_time, args.cycles) == (1.5, 0.5, 2)
 
 
+def test_long_rest_off_by_default():
+    args = cli.parse_args([])
+    assert args.long_rest_time is None
+    assert args.long_rest_every == 4
+
+
+def test_long_rest_flags():
+    args = cli.parse_args(["--long-rest", "15", "--long-rest-every", "3"])
+    assert (args.long_rest_time, args.long_rest_every) == (15, 3)
+    args = cli.parse_args(["-l", "20", "-e", "2"])
+    assert (args.long_rest_time, args.long_rest_every) == (20, 2)
+
+
+def test_long_rest_every_defaults_to_4():
+    assert cli.parse_args(["-l", "15"]).long_rest_every == 4
+
+
+def test_long_rest_every_needs_long_rest(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.parse_args(["-e", "3"])
+    assert exc.value.code == 2
+    assert "--long-rest-every needs --long-rest" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("argv", [
     ["-w", "0"], ["-w", "-5"], ["-w", "abc"],
     ["-r", "0"], ["-r", "-1"], ["-r", "x"],
     ["-c", "0"], ["-c", "-2"], ["-c", "1.5"], ["-c", "two"],
+    ["-l", "0"], ["-l", "x"], ["-l", "15", "-e", "0"], ["-l", "15", "-e", "1.5"],
 ])
 def test_invalid_values_rejected(argv, capsys):
     with pytest.raises(SystemExit) as exc:
@@ -105,6 +130,47 @@ def test_multiple_cycles_notification_order(notifier, clock):
     assert [c["at"] for c in notifier.calls] == [
         120, 180, 300, 360, 480, 540,
     ]
+
+
+def test_long_rest_replaces_every_nth_rest(notifier, clock):
+    ticks = []
+    run(notifier, clock, working_time=1 / 60, rest_time=1 / 60, cycles=4,
+        long_rest_time=2 / 60, long_rest_every=2,
+        on_tick=lambda phase, cycle, cycles, remaining:
+            ticks.append((phase, cycle)) if remaining == 1 else None)
+    assert ticks == [
+        ("Work", 1), ("Rest", 1), ("Work", 2), ("Long rest", 2),
+        ("Work", 3), ("Rest", 3), ("Work", 4), ("Long rest", 4),
+    ]
+    # 4 work seconds + 2 short rests (1s) + 2 long rests (2s)
+    assert clock.elapsed == 4 + 2 + 4
+
+
+def test_long_rest_notifications(notifier, clock):
+    run(notifier, clock, working_time=1, rest_time=5, cycles=3,
+        long_rest_time=15, long_rest_every=2)
+    assert notifier.titles == [
+        "Work period ended", "Rest period ended",
+        "Work period ended", "Long rest ended",
+        "Work period ended",
+        "Pomodoro complete",
+    ]
+    assert "5 min break" in notifier.calls[0]["message"]
+    assert "15 min long break" in notifier.calls[2]["message"]
+    assert "back to work" in notifier.calls[3]["message"]
+
+
+def test_long_rest_at_end_of_session(notifier, clock):
+    run(notifier, clock, working_time=25, rest_time=5, cycles=4,
+        long_rest_time=15)  # default: every 4 cycles
+    assert clock.elapsed == (4 * 25 + 3 * 5 + 15) * 60
+    assert notifier.titles[-1] == "Pomodoro complete"
+
+
+def test_no_long_rest_by_default(notifier, clock):
+    run(notifier, clock, working_time=1, rest_time=1, cycles=8)
+    assert "Long rest ended" not in notifier.titles
+    assert clock.elapsed == 16 * 60
 
 
 def test_total_duration_with_custom_times(notifier, clock):
@@ -256,14 +322,22 @@ def no_indicator(monkeypatch):
 
 def test_main_passes_arguments_to_run(monkeypatch, no_indicator):
     received = {}
-    monkeypatch.setattr(cli, "run",
-                        lambda w, r, c: received.update(w=w, r=r, c=c))
-    assert cli.main(["-w", "50", "-r", "10", "-c", "3"]) == 0
-    assert received == {"w": 50, "r": 10, "c": 3}
+    monkeypatch.setattr(cli, "run", lambda **kwargs: received.update(kwargs))
+    assert cli.main(["-w", "50", "-r", "10", "-c", "8",
+                     "-l", "20", "-e", "3"]) == 0
+    assert received == {"working_time": 50, "rest_time": 10, "cycles": 8,
+                        "long_rest_time": 20, "long_rest_every": 3}
+
+
+def test_main_without_long_rest(monkeypatch, no_indicator):
+    received = {}
+    monkeypatch.setattr(cli, "run", lambda **kwargs: received.update(kwargs))
+    assert cli.main([]) == 0
+    assert received["long_rest_time"] is None
 
 
 def test_main_handles_ctrl_c(monkeypatch, capsys, no_indicator):
-    def interrupted(*args):
+    def interrupted(**kwargs):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cli, "run", interrupted)
@@ -278,10 +352,11 @@ def test_main_uses_indicator_when_available(monkeypatch):
         timer(on_tick="tick", sleep="sleep")
 
     monkeypatch.setattr(cli, "load_indicator", lambda: show_indicator)
-    monkeypatch.setattr(cli, "run", lambda *args, **kwargs:
-                        calls.append((args, kwargs)))
+    monkeypatch.setattr(cli, "run", lambda **kwargs: calls.append(kwargs))
     assert cli.main(["-w", "50", "-r", "10", "-c", "3"]) == 0
-    assert calls == [((50, 10, 3), {"on_tick": "tick", "sleep": "sleep"})]
+    assert calls == [{"working_time": 50, "rest_time": 10, "cycles": 3,
+                      "long_rest_time": None, "long_rest_every": 4,
+                      "on_tick": "tick", "sleep": "sleep"}]
 
 
 @pytest.mark.parametrize("flag", ["--no-menubar", "--no-tray"])
@@ -290,7 +365,7 @@ def test_main_no_indicator_flag_skips_indicator(monkeypatch, flag):
         raise AssertionError("indicator should not be loaded")
 
     monkeypatch.setattr(cli, "load_indicator", fail)
-    monkeypatch.setattr(cli, "run", lambda *args: None)
+    monkeypatch.setattr(cli, "run", lambda **kwargs: None)
     assert cli.main([flag]) == 0
 
 

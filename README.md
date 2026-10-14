@@ -72,6 +72,7 @@ pomodoro                     # 25 min work, 5 min rest, 1 cycle
 pomodoro -w 50 -r 10         # 50 min work, 10 min rest
 pomodoro -c 4                # 4 cycles of 25/5
 pomodoro -w 0.5 -r 0.25      # fractional minutes work too (30s / 15s)
+pomodoro -c 8 -l 15          # 8 cycles, with a 15 min long rest every 4
 ```
 
 | Option | Description | Default |
@@ -79,10 +80,29 @@ pomodoro -w 0.5 -r 0.25      # fractional minutes work too (30s / 15s)
 | `-w`, `--working-time` | Work period in minutes | `25` |
 | `-r`, `--rest-time` | Rest period in minutes | `5` |
 | `-c`, `--cycles` | Number of work/rest cycles | `1` |
+| `-l`, `--long-rest` | Long rest in minutes; turns long rests on | off |
+| `-e`, `--long-rest-every` | Take the long rest after every N cycles (needs `-l`) | `4` |
 | `--no-menubar`, `--no-tray` | Don't show the countdown in the macOS menu bar or Windows tray | off |
 
 Times must be greater than 0; cycles must be a whole number greater than 0.
 Press `Ctrl+C` to stop the timer.
+
+## Long rests
+
+The classic Pomodoro technique adds a longer break after every few cycles.
+Turn it on with `-l`/`--long-rest`: every 4th cycle (or every N with
+`-e`/`--long-rest-every`) ends with a long rest instead of the normal one.
+
+```sh
+pomodoro -c 8 -l 20 -e 4
+```
+
+```
+Work, Rest, Work, Rest, Work, Rest, Work, Long rest,
+Work, Rest, Work, Rest, Work, Rest, Work, Long rest
+```
+
+If the session ends on such a cycle, the last break is a long rest.
 
 ## Menu bar countdown (macOS)
 
@@ -90,7 +110,9 @@ While the timer runs, the time left is shown in the menu bar, and it stays
 visible whatever app you're in:
 
 ```
-🍅 Work 24:13
+🍅 Work 24:13      during work
+🥫 Rest 04:59      during a rest
+💤 Long rest 14:59 during a long rest
 ```
 
 Click it to see the current cycle (e.g. `Cycle 1/4 - Work`) or to **Stop**
@@ -120,6 +142,7 @@ notification (title and sound) for each event:
 |---|---|---|
 | A work period ends | Work period ended | Glass |
 | A rest period ends | Rest period ended | Ping |
+| A long rest ends | Long rest ended | Ping |
 | All cycles are done | Pomodoro complete | Hero |
 
 After the last cycle's rest period, only "Pomodoro complete" is sent.

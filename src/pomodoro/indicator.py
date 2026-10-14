@@ -8,7 +8,9 @@ import threading
 
 from pomodoro.cli import format_time
 
-ICON = "🍅"
+# Icon shown before the countdown in each phase.
+PHASE_ICONS = {"Work": "🍅", "Rest": "🥫", "Long rest": "💤"}
+ICON = PHASE_ICONS["Work"]
 REFRESH_SECONDS = 0.25
 
 
@@ -17,10 +19,10 @@ class TimerStopped(Exception):
 
 
 def format_title(phase, remaining):
-    """Short countdown text, e.g. '🍅 Work 24:13'."""
+    """Short countdown text, e.g. '🍅 Work 24:13' or '🥫 Rest 04:59'."""
     if phase is None:
         return f"{ICON} --:--"
-    return f"{ICON} {phase} {format_time(remaining)}"
+    return f"{PHASE_ICONS[phase]} {phase} {format_time(remaining)}"
 
 
 def format_status(phase, cycle, cycles):

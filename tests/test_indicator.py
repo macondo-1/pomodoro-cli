@@ -40,7 +40,8 @@ def run(timer):
 
 def test_format_title():
     assert indicator.format_title("Work", 1453) == "🍅 Work 24:13"
-    assert indicator.format_title("Rest", 59) == "🍅 Rest 00:59"
+    assert indicator.format_title("Rest", 59) == "🥫 Rest 00:59"
+    assert indicator.format_title("Long rest", 900) == "💤 Long rest 15:00"
     assert indicator.format_title(None, 0) == "🍅 --:--"
 
 

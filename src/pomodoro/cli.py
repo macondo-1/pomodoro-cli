@@ -12,6 +12,7 @@ from xml.sax.saxutils import escape
 DEFAULT_WORKING_TIME = 25
 DEFAULT_REST_TIME = 5
 DEFAULT_CYCLES = 1
+DEFAULT_LONG_REST_EVERY = 4
 
 
 def _applescript_string(text):
@@ -104,12 +105,16 @@ def countdown(minutes, label, sleep=time.sleep, out=sys.stdout, on_tick=None):
 
 
 def run(working_time=DEFAULT_WORKING_TIME, rest_time=DEFAULT_REST_TIME,
-        cycles=DEFAULT_CYCLES, notifier=notify, sleep=time.sleep,
-        out=sys.stdout, on_tick=None):
+        cycles=DEFAULT_CYCLES, long_rest_time=None,
+        long_rest_every=DEFAULT_LONG_REST_EVERY, notifier=notify,
+        sleep=time.sleep, out=sys.stdout, on_tick=None):
     """Run the given number of work/rest cycles, notifying at each transition.
 
+    If long_rest_time is given, every long_rest_every-th cycle ends with a
+    long rest of that many minutes instead of the normal rest.
+
     If given, on_tick(phase, cycle, cycles, remaining_seconds) is called once
-    per second, where phase is "Work" or "Rest".
+    per second, where phase is "Work", "Rest" or "Long rest".
     """
     def ticker(phase, cycle):
         if on_tick:
@@ -118,17 +123,23 @@ def run(working_time=DEFAULT_WORKING_TIME, rest_time=DEFAULT_REST_TIME,
 
     for cycle in range(1, cycles + 1):
         prefix = f"Cycle {cycle}/{cycles}"
+        long_rest = (long_rest_time is not None
+                     and cycle % long_rest_every == 0)
+        if long_rest:
+            phase, minutes, kind = "Long rest", long_rest_time, "long break"
+        else:
+            phase, minutes, kind = "Rest", rest_time, "break"
 
         countdown(working_time, f"{prefix} - Work", sleep=sleep, out=out,
                   on_tick=ticker("Work", cycle))
         notifier("Work period ended",
-                 f"{prefix}: time for a {format_minutes(rest_time)} break.",
+                 f"{prefix}: time for a {format_minutes(minutes)} {kind}.",
                  sound="Glass")
 
-        countdown(rest_time, f"{prefix} - Rest", sleep=sleep, out=out,
-                  on_tick=ticker("Rest", cycle))
+        countdown(minutes, f"{prefix} - {phase}", sleep=sleep, out=out,
+                  on_tick=ticker(phase, cycle))
         if cycle < cycles:
-            notifier("Rest period ended",
+            notifier("Long rest ended" if long_rest else "Rest period ended",
                      f"{prefix}: back to work!",
                      sound="Ping")
 
@@ -173,11 +184,24 @@ def parse_args(argv=None):
     parser.add_argument("-c", "--cycles", type=positive_int,
                         default=DEFAULT_CYCLES,
                         help="number of work/rest cycles (default: %(default)s)")
+    parser.add_argument("-l", "--long-rest", type=positive_float,
+                        dest="long_rest_time", metavar="LONG_REST_TIME",
+                        help="take a long rest of this many minutes every "
+                             "few cycles (default: no long rests)")
+    parser.add_argument("-e", "--long-rest-every", type=positive_int,
+                        default=None, metavar="N",
+                        help="take the long rest after every N cycles "
+                             f"(default: {DEFAULT_LONG_REST_EVERY})")
     parser.add_argument("--no-menubar", "--no-tray", dest="indicator",
                         action="store_false",
                         help="don't show the countdown in the macOS menu bar "
                              "or Windows system tray")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.long_rest_every is None:
+        args.long_rest_every = DEFAULT_LONG_REST_EVERY
+    elif args.long_rest_time is None:
+        parser.error("--long-rest-every needs --long-rest to set its length")
+    return args
 
 
 def load_indicator():
@@ -198,14 +222,15 @@ def load_indicator():
 
 def main(argv=None):
     args = parse_args(argv)
+    settings = dict(working_time=args.working_time, rest_time=args.rest_time,
+                    cycles=args.cycles, long_rest_time=args.long_rest_time,
+                    long_rest_every=args.long_rest_every)
     show_indicator = load_indicator() if args.indicator else None
     try:
         if show_indicator:
-            show_indicator(
-                lambda **kwargs: run(args.working_time, args.rest_time,
-                                     args.cycles, **kwargs))
+            show_indicator(lambda **kwargs: run(**settings, **kwargs))
         else:
-            run(args.working_time, args.rest_time, args.cycles)
+            run(**settings)
     except KeyboardInterrupt:
         print("\nPomodoro stopped.")
         return 130

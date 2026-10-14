@@ -93,5 +93,5 @@ def test_run_with_tray_shows_countdown_and_closes(tray):
         sleep(0.05)  # long enough for the main loop to draw this tick
 
     tray.run_with_tray(timer, tray_factory=factory, refresh=0.001)
-    assert trays[0].icon.title == "🍅 Rest 01:05\nCycle 1/1 - Rest"
+    assert trays[0].icon.title == "🥫 Rest 01:05\nCycle 1/1 - Rest"
     assert trays[0].icon.stopped
